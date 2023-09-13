@@ -1,4 +1,5 @@
-targetScope = 'subscription'
+// https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/resource-group-scoped-deployments
+targetScope = 'resourceGroup'
 
 @minLength(1)
 @maxLength(64)
@@ -61,48 +62,12 @@ param formRecognizerSkuName string = 'S0'
 param principalId string = ''
 
 var abbrs = loadJsonContent('abbreviations.json')
-var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
+var resourceToken = toLower(uniqueString(resourceGroup().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
-
-// Organize resources in a resource group
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
-  name: !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}${environmentName}'
-  location: location
-  tags: tags
-}
-
-resource openAiResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(openAiResourceGroupName)) {
-  name: !empty(openAiResourceGroupName) ? openAiResourceGroupName : resourceGroup.name
-}
-
-resource formRecognizerResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(formRecognizerResourceGroupName)) {
-  name: !empty(formRecognizerResourceGroupName) ? formRecognizerResourceGroupName : resourceGroup.name
-}
-
-resource searchServiceResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(searchServiceResourceGroupName)) {
-  name: !empty(searchServiceResourceGroupName) ? searchServiceResourceGroupName : resourceGroup.name
-}
-
-resource storageResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(storageResourceGroupName)) {
-  name: !empty(storageResourceGroupName) ? storageResourceGroupName : resourceGroup.name
-}
-
-resource cosmosResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(cosmosResourceGroupName)) {
-  name: !empty(cosmosResourceGroupName) ? cosmosResourceGroupName : resourceGroup.name
-}
-
-resource appInsightsResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(appInsightsResourceGroupName)) {
-  name: !empty(appInsightsResourceGroupName) ? appInsightsResourceGroupName : resourceGroup.name
-}
-
-resource sqlResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(sqlResourceGroupName)) {
-  name: !empty(sqlResourceGroupName) ? sqlResourceGroupName : resourceGroup.name
-}
 
 // Create an App Service Plan to group applications under the same payment plan and SKU
 module appServicePlan 'core/host/appserviceplan.bicep' = {
   name: 'appserviceplan'
-  scope: resourceGroup
   params: {
     name: !empty(appServicePlanName) ? appServicePlanName : '${abbrs.webServerFarms}${resourceToken}'
     location: location
@@ -118,7 +83,6 @@ module appServicePlan 'core/host/appserviceplan.bicep' = {
 // Keyvault to store secrets
 module keyVault 'core/keyvault/keyvault.bicep' = {
   name: 'keyVault'
-  scope: resourceGroup
   params: {
     name: '${abbrs.keyVaultVaults}${resourceToken}'
     location: location
@@ -130,7 +94,6 @@ module keyVault 'core/keyvault/keyvault.bicep' = {
 // Application backend service
 module backend 'core/host/appservice.bicep' = {
   name: 'web'
-  scope: resourceGroup
   params: {
     name: !empty(backendServiceName) ? backendServiceName : '${abbrs.webSitesAppService}backend-${resourceToken}'
     location: location
@@ -155,7 +118,6 @@ module backend 'core/host/appservice.bicep' = {
 // Application data service
 module dataService 'core/host/appservice.bicep' = {
   name: 'data-service'
-  scope: resourceGroup
   params: {
     name: !empty(dataServiceName) ? dataServiceName : '${abbrs.webSitesAppService}data-${resourceToken}'
     location: location
@@ -180,7 +142,6 @@ module dataService 'core/host/appservice.bicep' = {
 // Inbound access rules for data microservice
 module dataServiceInboundAccessRules 'core/host/appservice-config.bicep' = {
   name: 'dataServiceInboundAccessRules'
-  scope: resourceGroup
   params: {
     appServiceName: dataService.outputs.name
     allowedIpAddresses: backend.outputs.outboundIpAddresses
@@ -194,7 +155,6 @@ module dataServiceInboundAccessRules 'core/host/appservice-config.bicep' = {
 // Keyvault access policies for the services
 module servicesKeyVaultAccessPolicies 'core/keyvault/keyvault-access-policy.bicep' = {
   name: 'servicesKeyVaultAccessPolicies'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     accessPolicies: [
@@ -229,7 +189,6 @@ module servicesKeyVaultAccessPolicies 'core/keyvault/keyvault-access-policy.bice
 
 module openAi 'core/ai/cognitiveservices.bicep' = {
   name: 'openai'
-  scope: openAiResourceGroup
   params: {
     name: !empty(openAiServiceName) ? openAiServiceName : '${abbrs.cognitiveServicesOpenAI}${resourceToken}'
     location: openAiResourceGroupLocation
@@ -280,7 +239,6 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
 
 module formRecognizer 'core/ai/cognitiveservices.bicep' = {
   name: 'formrecognizer'
-  scope: formRecognizerResourceGroup
   params: {
     name: !empty(formRecognizerServiceName) ? formRecognizerServiceName : '${abbrs.cognitiveServicesFormRecognizer}${resourceToken}'
     kind: 'FormRecognizer'
@@ -294,7 +252,6 @@ module formRecognizer 'core/ai/cognitiveservices.bicep' = {
 
 module searchService 'core/search/search-services.bicep' = {
   name: 'search-service'
-  scope: searchServiceResourceGroup
   params: {
     name: !empty(searchServiceName) ? searchServiceName : 'gptkb-${resourceToken}'
     searchIndexName: searchIndexName
@@ -322,7 +279,6 @@ module searchService 'core/search/search-services.bicep' = {
 
 module storage 'core/storage/storage-account.bicep' = {
   name: 'storage'
-  scope: storageResourceGroup
   params: {
     name: !empty(storageAccountName) ? storageAccountName : '${abbrs.storageStorageAccounts}${resourceToken}'
     location: storageResourceGroupLocation
@@ -353,7 +309,6 @@ module storage 'core/storage/storage-account.bicep' = {
 // Cosmos DB Deployment
 module cosmosAccount 'core/database/cosmos-database.bicep' = {
   name: 'cosmos-db'
-  scope: cosmosResourceGroup
   params: {
     cosmosAccountName: !empty(cosmosAccountName) ? cosmosAccountName : '${abbrs.cosmosNoSQLDBDatabaseAccounts}${resourceToken}'
     cosmosDatabaseName: !empty(cosmosDatabaseName) ? cosmosDatabaseName : '${abbrs.cosmosDatabase}${resourceToken}'
@@ -373,7 +328,6 @@ module cosmosAccount 'core/database/cosmos-database.bicep' = {
 // App Insights Deployment 
 module appInsights 'core/logging/appinsights.bicep' = {
   name: 'app-insights'
-  scope: appInsightsResourceGroup
   params: {
     applicationInsightsName : !empty(appInsightsName) ? appInsightsName : '${abbrs.insightsComponents}${resourceToken}'
     logAnalyticsWorkspaceName: !empty(logAnalyticsWorkspaceName) ? logAnalyticsWorkspaceName : '${abbrs.operationalInsightsWorkspaces}${resourceToken}'
@@ -389,7 +343,6 @@ module appInsights 'core/logging/appinsights.bicep' = {
 // SQL Server and Database Deployment
 module sql 'core/database/sql-database.bicep' = {
   name: 'sql'
-  scope: sqlResourceGroup
   params: {
     sqlServerName: !empty(sqlServerName) ? sqlServerName : '${abbrs.sqlServers}${resourceToken}'
     sqlDatabaseName: !empty(sqlDatabaseName) ? sqlDatabaseName : '${abbrs.sqlServersDatabases}${resourceToken}'
@@ -404,109 +357,96 @@ module sql 'core/database/sql-database.bicep' = {
 
 // USER ROLES
 module openAiRoleUser 'core/security/role.bicep' = {
-  scope: openAiResourceGroup
   name: 'openai-role-user'
   params: {
     principalId: principalId
     roleDefinitionId: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
-    principalType: 'User'
-    resourceGroupName: openAiResourceGroup.name
+    // principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
 module formRecognizerRoleUser 'core/security/role.bicep' = {
-  scope: formRecognizerResourceGroup
   name: 'formrecognizer-role-user'
   params: {
     principalId: principalId
     roleDefinitionId: 'a97b65f3-24c7-4388-baec-2e87135dc908'
-    principalType: 'User'
-    resourceGroupName: formRecognizerResourceGroup.name
+    // principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
 module storageRoleUser 'core/security/role.bicep' = {
-  scope: storageResourceGroup
   name: 'storage-role-user'
   params: {
     principalId: principalId
     roleDefinitionId: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
-    principalType: 'User'
-    resourceGroupName: storageResourceGroup.name
+    // principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
 module storageContribRoleUser 'core/security/role.bicep' = {
-  scope: storageResourceGroup
   name: 'storage-contribrole-user'
   params: {
     principalId: principalId
     roleDefinitionId: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-    principalType: 'User'
-    resourceGroupName: storageResourceGroup.name
+    // principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
 module searchRoleUser 'core/security/role.bicep' = {
-  scope: searchServiceResourceGroup
   name: 'search-role-user'
   params: {
     principalId: principalId
     roleDefinitionId: '1407120a-92aa-4202-b7e9-c0e197c71c8f'
-    principalType: 'User'
-    resourceGroupName: searchServiceResourceGroup.name
+    // principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
 module searchContribRoleUser 'core/security/role.bicep' = {
-  scope: searchServiceResourceGroup
   name: 'search-contrib-role-user'
   params: {
     principalId: principalId
     roleDefinitionId: '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
-    principalType: 'User'
-    resourceGroupName: searchServiceResourceGroup.name
+    // principalType: 'User'
+    principalType: 'ServicePrincipal'
   }
 }
 
 // SYSTEM IDENTITIES
 module openAiRoleBackend 'core/security/role.bicep' = {
-  scope: openAiResourceGroup
   name: 'openai-role-backend'
   params: {
     principalId: backend.outputs.identityPrincipalId
     roleDefinitionId: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
     principalType: 'ServicePrincipal'
-    resourceGroupName: openAiResourceGroup.name
   }
 }
 
 module storageRoleBackend 'core/security/role.bicep' = {
-  scope: storageResourceGroup
   name: 'storage-role-backend'
   params: {
     principalId: backend.outputs.identityPrincipalId
     roleDefinitionId: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
     principalType: 'ServicePrincipal'
-    resourceGroupName: storageResourceGroup.name
   }
 }
 
 module searchRoleBackend 'core/security/role.bicep' = {
-  scope: searchServiceResourceGroup
   name: 'search-role-backend'
   params: {
     principalId: backend.outputs.identityPrincipalId
     roleDefinitionId: '1407120a-92aa-4202-b7e9-c0e197c71c8f'
     principalType: 'ServicePrincipal'
-    resourceGroupName: searchServiceResourceGroup.name
   }
 }
 
 // Adding secrets to keyvault. Todo: Move openAI and formRecognizer secrets to their own biceps. 
 module azureOpenAIGPTService 'core/keyvault/keyvault-secret.bicep' = {
   name: 'openai-secret-gpt-service'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'AZURE-OPENAI-GPT4-SERVICE'
@@ -520,7 +460,6 @@ module azureOpenAIGPTService 'core/keyvault/keyvault-secret.bicep' = {
 
 module azureOpenAIClassifierService 'core/keyvault/keyvault-secret.bicep' = {
   name: 'openai-secret-classifier-service'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'AZURE-OPENAI-CLASSIFIER-SERVICE'
@@ -534,7 +473,6 @@ module azureOpenAIClassifierService 'core/keyvault/keyvault-secret.bicep' = {
 
 module azureOpenAIGptKey 'core/keyvault/keyvault-secret.bicep' = {
   name: 'openai-secret-gpt-api-key'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'AZURE-OPENAI-GPT4-API-KEY'
@@ -548,7 +486,6 @@ module azureOpenAIGptKey 'core/keyvault/keyvault-secret.bicep' = {
 
 module azureOpenAIClassifierKey 'core/keyvault/keyvault-secret.bicep' = {
   name: 'openai-secret-classifier-api-key'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'AZURE-OPENAI-CLASSIFIER-API-KEY'
@@ -562,7 +499,6 @@ module azureOpenAIClassifierKey 'core/keyvault/keyvault-secret.bicep' = {
 
 module azureFormRecognizerService 'core/keyvault/keyvault-secret.bicep' = {
   name: 'formrecognizer-secret-service-name'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'AZURE-FORMRECOGNIZER-SERVICE'
@@ -576,7 +512,6 @@ module azureFormRecognizerService 'core/keyvault/keyvault-secret.bicep' = {
 
 module azureFormRecognizerKey 'core/keyvault/keyvault-secret.bicep' = {
   name: 'formrecognizer-secret-key'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'AZURE-FORMRECOGNIZER-KEY'
@@ -590,7 +525,6 @@ module azureFormRecognizerKey 'core/keyvault/keyvault-secret.bicep' = {
 
 module azureSQLServerName 'core/keyvault/keyvault-secret.bicep' = {
   name: 'sqlserver-name'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'SQL-SERVER-NAME'
@@ -604,7 +538,6 @@ module azureSQLServerName 'core/keyvault/keyvault-secret.bicep' = {
 
 module dataServiceUri 'core/keyvault/keyvault-secret.bicep' = {
   name: 'appservice-data-service-uri'
-  scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.name
     secretName: 'DATA-SERVICE-URI'
@@ -617,4 +550,4 @@ module dataServiceUri 'core/keyvault/keyvault-secret.bicep' = {
 }
 
 output KEYVAULT_NAME string = keyVault.outputs.name
-output AZURE_RESOURCE_GROUP string = resourceGroup.name
+output AZURE_RESOURCE_GROUP string = resourceGroup().name
